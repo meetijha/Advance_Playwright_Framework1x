@@ -25,7 +25,7 @@ yarn-error.log
 *.tsbuildinfo
 
 # Env / secrets
-
+.env
 .env.local
 .env.*.local
 
