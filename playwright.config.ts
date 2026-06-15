@@ -1,9 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as dotenv from 'dotenv';
-import * as path from 'path';
-if (!process.env.CI) {
-  dotenv.config();
-}
+
+dotenv.config();
 
 function resolveBaseURL(): string {
   if (process.env.BASE_URL) return process.env.BASE_URL;
