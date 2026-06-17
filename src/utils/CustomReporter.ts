@@ -230,8 +230,12 @@ class CustomTTAReporter implements Reporter {
         let videoPath: string | undefined;
         let tracePath: string | undefined;
 
+        // Check if this is an API test that passed — skip screenshots for successful API tests
+        const isApiTest = test.location.file.includes('api_Tests') || test.location.file.includes('api-tests');
+        const shouldSkipScreenshots = isApiTest && status === 'passed';
+
         for (const attachment of result.attachments) {
-            if (attachment.contentType === 'image/png') {
+            if (attachment.contentType === 'image/png' && !shouldSkipScreenshots) {
                 const screenshotName = `screenshot_${this.testCounter}_${screenshots.length + 1}.png`;
                 const destPath = path.join('tta-report', 'screenshots', screenshotName);
                 const destDir = path.dirname(destPath);
@@ -284,29 +288,31 @@ class CustomTTAReporter implements Reporter {
             }
         }
 
-        // Associate screenshots with steps
-        for (const step of currentTestSteps) {
-            for (const [name, screenshotPath] of stepScreenshots) {
-                const nameLower = name.toLowerCase();
-                const titleLower = step.title.toLowerCase();
+        // Associate screenshots with steps (skip for successful API tests)
+        if (!shouldSkipScreenshots) {
+            for (const step of currentTestSteps) {
+                for (const [name, screenshotPath] of stepScreenshots) {
+                    const nameLower = name.toLowerCase();
+                    const titleLower = step.title.toLowerCase();
 
-                const stepIndexPattern = `step-${step.stepIndex}-`;
-                if (nameLower.startsWith(stepIndexPattern)) {
-                    step.screenshot = screenshotPath;
-                    break;
-                }
+                    const stepIndexPattern = `step-${step.stepIndex}-`;
+                    if (nameLower.startsWith(stepIndexPattern)) {
+                        step.screenshot = screenshotPath;
+                        break;
+                    }
 
-                const stepNumPattern1 = `step_${(step.stepIndex || 0) + 1}_`;
-                const stepNumPattern2 = `step ${(step.stepIndex || 0) + 1}`;
-                if (nameLower.includes(stepNumPattern1) || nameLower.includes(stepNumPattern2)) {
-                    step.screenshot = screenshotPath;
-                    break;
-                }
+                    const stepNumPattern1 = `step_${(step.stepIndex || 0) + 1}_`;
+                    const stepNumPattern2 = `step ${(step.stepIndex || 0) + 1}`;
+                    if (nameLower.includes(stepNumPattern1) || nameLower.includes(stepNumPattern2)) {
+                        step.screenshot = screenshotPath;
+                        break;
+                    }
 
-                const cleanedName = nameLower.replace(/step[-_]?\d+[-_:]?/i, '').trim();
-                if (cleanedName && (titleLower.includes(cleanedName) || cleanedName.includes(titleLower.substring(0, 20)))) {
-                    step.screenshot = screenshotPath;
-                    break;
+                    const cleanedName = nameLower.replace(/step[-_]?\d+[-_:]?/i, '').trim();
+                    if (cleanedName && (titleLower.includes(cleanedName) || cleanedName.includes(titleLower.substring(0, 20)))) {
+                        step.screenshot = screenshotPath;
+                        break;
+                    }
                 }
             }
         }
