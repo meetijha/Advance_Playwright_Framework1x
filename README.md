@@ -1,7 +1,5 @@
 # Advance Playwright Framework (1.x)
 
-> Production-grade Playwright + TypeScript automation framework built by [Meeti Jha]
-
 [![Playwright](https://img.shields.io/badge/Playwright-1.60-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Node](https://img.shields.io/badge/Node-18+-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
@@ -19,14 +17,21 @@ A complete, opinionated, batteries-included Playwright framework with **Page Obj
 - [NPM Scripts](#npm-scripts)
 - [Path Aliases](#path-aliases)
 - [Environment Configuration](#environment-configuration)
+- [API Testing](#api-testing)
+- [JSONPath Queries (jsonpath-plus)](#jsonpath-queries-jsonpath-plus)
+- [JSON Schema Validation (Ajv)](#json-schema-validation-ajv)
 - [Test Tags & Filtering](#test-tags--filtering)
 - [Logging (Winston)](#logging-winston)
 - [Element Utilities (UtilElementLocator)](#element-utilities-utilelementlocator)
 - [Page Objects (BasePage)](#page-objects-basepage)
 - [Test Data Factory (Faker)](#test-data-factory-faker)
 - [Writing Tests — Steps + Logging](#writing-tests--steps--logging)
-- [ESM & Import Extensions](#esm--import-extensions)
+- [Fixtures (Page Object injection)](#fixtures-page-object-injection)
+- [Per-Step Screenshots (visualStep)](#per-step-screenshots-visualstep)
+- [End-to-End Checkout Flow](#end-to-end-checkout-flow)
+- [Module System (CommonJS)](#module-system-commonjs)
 - [Reporting](#reporting)
+- [Custom TTA Report — Visual Flow](#custom-tta-report--visual-flow)
 - [AI Agent Rules](#ai-agent-rules)
 - [Project Rules](#project-rules)
 - [Phase 1 Walkthrough](#phase-1-walkthrough)
@@ -42,6 +47,7 @@ A complete, opinionated, batteries-included Playwright framework with **Page Obj
 - **Page Object Model** under `src/pages/`
 - **Custom Fixtures** under `src/fixtures/`
 - **API client layer** under `src/api/` (REST + GraphQL ready)
+- **Dedicated API project** for `src/tests/apiTests/**`, so API specs run once without browser projects
 - **Multi-env config** via `dotenv` — qa, stg, prod, dev
 - **Data-driven testing** — CSV (`csv-parse`), JSON, XLSX (`xlsx`)
 - **Test data factories** with `@faker-js/faker`
@@ -63,18 +69,43 @@ A complete, opinionated, batteries-included Playwright framework with **Page Obj
 AdvancePlaywrightFramework1x/
 ├── src/
 │   ├── api/                   # API clients (REST / GraphQL)
-│   ├── config/                # Env loaders, constants, URLs
+│   ├── config/                # Env loaders + credentials accessor
+│   │   └── credentials.ts     # Login creds sourced from .env
 │   ├── fixtures/              # Playwright custom fixtures
+│   │   └── test-base.ts       # `test` extended with a fixture per Page Object
 │   ├── pages/                 # Page Object Model classes
+│   │   ├── BasePage.ts        # Abstract parent (page, el, log, goto)
+│   │   ├── LoginPage.ts
+│   │   ├── InventoryPage.ts
+│   │   ├── ItemDetailPage.ts
+│   │   ├── CartPage.ts
+│   │   ├── CheckoutStepOnePage.ts
+│   │   ├── CheckoutStepTwoPage.ts
+│   │   ├── CheckoutCompletePage.ts
+│   │   └── index.ts           # Barrel re-exports
 │   ├── testdata/              # CSV / JSON / XLSX test data
+│   │   ├── booking.data.ts    # Booking payload factory
+│   │   └── schemas/           # JSON Schema (Draft-07) for Ajv validation
 │   ├── tests/                 # Spec files (*.spec.ts)
+│   │   ├── apiTests/          # API specs, run with the `api` Playwright project
+│   │   │   ├── 01_restfulbooker_raw/        # raw request fixture
+│   │   │   ├── 02_restfulbooker_apiHelper/  # ApiHelper wrapper
+│   │   │   ├── 03_restfulbooker_fixture_e2e/# BookingApi client + fixtures
+│   │   │   ├── 04_jsonpath_plus/            # JSONPath queries + cheat sheet
+│   │   │   └── 05_ajv_schema/               # Ajv schema validation
+│   │   └── e2e/               # Full login→checkout→complete flow
 │   └── utils/                 # Helpers
 │       ├── logger.ts          # Winston logger (+ createLogger scope)
 │       ├── UtilElementLocator.ts  # Locator action wrapper (Flex type)
 │       ├── DataGenerator.ts   # Faker test-data factory
+│       ├── ApiHelper.ts       # HTTP wrapper (GET/POST/PUT/PATCH/DELETE + retry)
+│       ├── schemaValidator.ts # Ajv + ajv-formats schema validation
+│       ├── visualStep.ts      # test.step + per-step screenshot
 │       └── CustomReporter.ts  # TTA HTML reporter
 │
 ├── docs/
+│   ├── images/                # README screenshots
+│   ├── ttacart-pom-creator/   # Skill: live-page → Page Object generator
 │   └── phase1/
 │       └── prompts.md         # Phase 1 conversation log
 │
@@ -140,6 +171,7 @@ npx playwright install --with-deps
 
 ```bash
 npm test                  # all tests, all projects
+npx playwright test src/tests/apiTests/01_restfulbooker_raw/crud.spec.ts --project=api
 npm run test:chromium     # chromium only
 npm run test:ui           # UI mode (debug-friendly)
 npm run test:p0           # smoke / critical only
@@ -194,8 +226,8 @@ Defined in `tsconfig.json`:
 
 Example:
 ```ts
-import logger from '@utils/logger.js';
-import { LoginPage } from '@pages/LoginPage.js';
+import logger from '@utils/logger';
+import { LoginPage } from '@pages/LoginPage';
 import { users } from '@testdata/users.json';
 ```
 
@@ -214,15 +246,183 @@ QA_BASE_URL=https://app.thetestingacademy.com
 STG_BASE_URL=https://stage.thetestingacademy.com
 PROD_BASE_URL=https://app.thetestingacademy.com
 DEV_BASE_URL=http://localhost:3000
+API_BASE_URL=https://restful-booker.herokuapp.com
 LOG_LEVEL=info            # winston log level
 TEST_ENV=UAT              # shown in TTA report
 TEST_AUTHOR=Pramod
+```
+
+---
+
+## API Testing
+
+API coverage targets Restful Booker by default and runs through Playwright's
+`APIRequestContext`, not a browser page. Set `TTA_ENV=api` to resolve
+`baseURL` from `API_BASE_URL`:
+
+```bash
+TTA_ENV=api npm test -- --project=api
+npx playwright test src/tests/apiTests/02_restfulbooker_apiHelper/create-booking.spec.ts --project=api
+```
+
+![TTA custom report overview for API and UI runs](docs/images/tta-report-overview.png)
+
+### Dedicated API Project
+
+API specs live under `src/tests/apiTests/` and run through the dedicated
+Playwright `api` project:
+
+```ts
+{
+  name: 'api',
+  testMatch: /src\/tests\/apiTests\/.*\.spec\.ts/,
+}
+```
+
+Browser projects ignore API specs, so request-only tests are not duplicated
+across Chromium, Firefox, WebKit, or mobile browser projects.
+
+### API Learning Layers
+
+The API examples are split into layers so the same Restful Booker workflow can
+grow from direct Playwright calls into reusable framework code:
+
+| Layer | Location | Purpose |
+|-------|----------|---------|
+| Raw Playwright requests | `src/tests/apiTests/01_restfulbooker_raw/` | Uses the built-in `request` fixture directly for `GET`, `POST`, `PUT`, auth token, and CRUD examples. |
+| Shared API helper | `src/tests/apiTests/02_restfulbooker_apiHelper/` + `src/utils/ApiHelper.ts` | Wraps `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, query params, retry polling, typed JSON parsing, and status helpers. |
+| Typed API client layer | `src/api/` + `src/tests/apiTests/03_restfulbooker_fixture_e2e/` | Home for endpoint-specific clients such as `BookingApi`, plus payload/response models and reusable flow verification as the API framework grows. |
+| JSONPath response queries | `src/tests/apiTests/04_jsonpath_plus/` | Query JSON responses with `jsonpath-plus` — root, child, recursive descent, wildcard, index, slice, and filtration. Ships a [cheat sheet](src/tests/apiTests/04_jsonpath_plus/jsonpath-cheatsheet.md). |
+| JSON Schema validation | `src/tests/apiTests/05_ajv_schema/` + `src/utils/schemaValidator.ts` + `src/testdata/schemas/` | Contract-test responses against Draft-07 JSON Schema with `ajv` + `ajv-formats`. |
+
+Helper-based tests should prefer aliases and framework utilities:
+
+```ts
+import { expect, test } from '@playwright/test';
+import { ApiHelper } from '@utils/ApiHelper';
+
+test('POST /booking creates a booking @p0', async ({ request }) => {
+    const api = new ApiHelper(request);
+    const response = await api.post('/booking', {
+        firstname: 'Pramod',
+        lastname: 'Dutta',
+        totalprice: 111,
+        depositpaid: true,
+        bookingdates: { checkin: '2026-04-01', checkout: '2026-04-10' },
+        additionalneeds: 'Breakfast',
+    });
+
+    expect(api.isSuccess(response)).toBe(true);
+});
+```
+
+```bash
+API_BASE_URL=https://restful-booker.herokuapp.com \
+BASE_URL=https://restful-booker.herokuapp.com \
+npx playwright test src/tests/apiTests/01_restfulbooker_raw/crud.spec.ts --project=api
+```
+
+For multi-step API flows, use `test.describe.serial` and a typed state object to
+pass values like auth tokens and booking IDs between tests:
+
+```ts
+interface BookingFlowState {
+    token?: string;
+    bookingId?: number;
+}
+
+test.describe.serial('Restful Booker CRUD API', () => {
+    const bookingFlowState: BookingFlowState = {};
+
+    test('TC#1 @p0 - Create token', async ({ request }) => {
+        // set bookingFlowState.token
+    });
+
+    test('TC#2 @p0 - Create booking', async ({ request }) => {
+        // set bookingFlowState.bookingId
+    });
+
+    test('TC#3 @p0 - Update booking', async ({ request }) => {
+        // use bookingFlowState.token and bookingFlowState.bookingId
+    });
+});
 ```
 
 Switch env:
 ```bash
 TTA_ENV=stg npm test
 ```
+
+---
+
+## JSONPath Queries (jsonpath-plus)
+
+**Concept:** [`jsonpath-plus`](https://github.com/JSONPath-Plus/JSONPath) lets you pull values out of a JSON document with a single path expression instead of manual `obj.a.b[0].c` chaining. Every query returns an **array of matches**.
+
+**Why:** API responses are nested and array-heavy. One expression like `$.store.book[?(@.price < 10)]` replaces a loop-and-filter block and reads like a question.
+
+**Q&A — why use this?**
+- **Q: What's the difference between `.` and `..`?** A: `.child` is a direct child; `..child` (recursive descent) finds the key at **any** depth.
+- **Q: How do I filter?** A: `[?(@.field <op> value)]` where `@` is the current element, e.g. `[?(@.category === 'fiction')]`.
+- **Q: Does it ever return a single value?** A: By default no — always an array (take `[0]`), unless you pass `{ wrap: false }`.
+
+```mermaid
+flowchart TD
+    R["$ root"] --> C["$.store.book child"]
+    C --> RD["$..price recursive descent"]
+    C --> W["$.store.book[*] wildcard"]
+    C --> IDX["$.store.book[0] index"]
+    C --> SL["$.store.book[0:2] slice"]
+    C --> F["$.store.book[?(@.price < 10)] filter"]
+```
+
+```ts
+import { JSONPath } from 'jsonpath-plus';
+
+const cheap = JSONPath({ path: '$.store.book[?(@.price < 10)]', json: data });
+const authors = JSONPath({ path: '$.store.book[*].author', json: data });
+const allPrices = JSONPath({ path: '$..price', json: data }); // any depth
+const lastBook = JSONPath({ path: '$.store.book[-1:]', json: data })[0];
+```
+
+Full operator reference: [`jsonpath-cheatsheet.md`](src/tests/apiTests/04_jsonpath_plus/jsonpath-cheatsheet.md). Runnable demo: [`jsonpath-queries.e2e.spec.ts`](src/tests/apiTests/04_jsonpath_plus/jsonpath-queries.e2e.spec.ts).
+
+---
+
+## JSON Schema Validation (Ajv)
+
+**Concept:** Validate an API response against a **Draft-07 JSON Schema** with [`ajv`](https://ajv.js.org) + `ajv-formats`. `validateSchema(schema, data)` returns `{ valid, errors, errorText }` so a single `expect` covers the entire response shape.
+
+**Why:** Field-by-field `expect` assertions miss added/removed/retyped fields. A schema is one contract check that catches structural drift — and `additionalProperties: false` flags unexpected keys.
+
+**Q&A — why use this?**
+- **Q: Why `ajv-formats`?** A: It enforces `format` keywords like `"date"`, `"email"`, `"uri"` — without it those formats are ignored.
+- **Q: Where do schemas live?** A: `src/testdata/schemas/*.schema.json`, loaded in specs via `fs.readFileSync`.
+- **Q: Why is the project on `ajv@8`?** A: `ajv-formats@3` requires Ajv v8; the repo pins `ajv@^8` directly (eslint keeps its own v6 nested).
+
+```mermaid
+flowchart LR
+    S[*.schema.json] --> V["validateSchema&#40;schema, body&#41;"]
+    B[API response] --> V
+    V -->|valid| P[expect valid toBe true]
+    V -->|invalid| E[errorText → failing assertion]
+```
+
+```ts
+import { validateSchema } from '@utils/schemaValidator';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const schema = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../../../testdata/schemas/create-booking.schema.json'), 'utf-8'),
+);
+
+const body = await bookingApi.createBooking(buildBooking({ firstname: 'Schema' }));
+const { valid, errorText } = validateSchema(schema, body);
+expect(valid, errorText).toBe(true);
+```
+
+Runnable demo: [`create-booking-schema.spec.ts`](src/tests/apiTests/05_ajv_schema/create-booking-schema.spec.ts).
 
 ---
 
@@ -248,7 +448,7 @@ npx playwright test --grep-invert "@flaky"
 ## Logging (Winston)
 
 ```ts
-import logger from '@utils/logger.js';
+import logger from '@utils/logger';
 
 logger.info('login start', { user: 'pramod' });
 logger.warn('slow API response', { ms: 3200 });
@@ -264,7 +464,7 @@ Output:
 Scoped child loggers tag every line with their origin:
 
 ```ts
-import { createLogger } from '@utils/logger.js';
+import { createLogger } from '@utils/logger';
 
 const log = createLogger('LoginPage');
 log.info('loginAs standard_user');
@@ -295,7 +495,7 @@ flowchart TD
 ```
 
 ```ts
-import { UtilElementLocator } from '@utils/UtilElementLocator.js';
+import { UtilElementLocator } from '@utils/UtilElementLocator';
 
 const el = new UtilElementLocator(page, 'LoginPage');
 await el.fill('[data-test="username"]', 'standard_user');
@@ -332,7 +532,7 @@ classDiagram
 ```
 
 ```ts
-import { BasePage } from './BasePage.js';
+import { BasePage } from './BasePage';
 
 export class LoginPage extends BasePage {
     static readonly PATH = '/playwright/ttacart/index.html';
@@ -359,7 +559,7 @@ export class LoginPage extends BasePage {
 **Q&A — why use this?**
 - **Q: Why static methods?** A: No state to hold — call `DataGenerator.credentials()` without `new`.
 - **Q: What's `checkoutCustomer()` for?** A: The TTACart checkout step-one form needs `firstName`, `lastName`, `postalCode` — one call returns all three.
-- **Q: Faker v10 gotcha?** A: It's ESM-only and renamed APIs — use `faker.internet.username()` (not `userName`) and `faker.location.zipCode()` (not `address.zipCode`).
+- **Q: Which Faker version?** A: Pinned to **v8** (`@faker-js/faker@^8.4.1`) because it ships a CommonJS build — v9/v10 are ESM-only. v8 API: `faker.internet.userName()` (lowercase `username()` is v9+) and `faker.location.zipCode()` (v8 renamed `address` → `location`).
 
 ```mermaid
 mindmap
@@ -378,7 +578,7 @@ mindmap
 ```
 
 ```ts
-import { DataGenerator } from '@utils/DataGenerator.js';
+import { DataGenerator } from '@utils/DataGenerator';
 
 const { username, password } = DataGenerator.credentials();
 const customer = DataGenerator.checkoutCustomer();
@@ -391,10 +591,10 @@ const customer = DataGenerator.checkoutCustomer();
 
 **Concept:** Wrap each logical action in `test.step('label', async () => {…})` and emit a scoped logger line inside it. The custom TTA reporter surfaces both — step titles **and** their console output.
 
-**Why:** Plain Page-Object calls don't appear as steps in the report. `CustomReporter` only records `step.category === 'test.step'`, and pipes test stdout into each step's console block.
+**Why:** Plain Page-Object calls don't appear as steps in the report. `CustomReporter` records `step.category === 'test.step'`, keeps test-level logs in the expanded test panel, and pipes test stdout into each step's console block when steps are present.
 
 **Q&A — why use this?**
-- **Q: Why does the report show empty steps without this?** A: Without `test.step()`, there are no `test.step` categories for the reporter to capture.
+- **Q: Why does the report show no step breakdown without this?** A: Without `test.step()`, logs still appear under **Test Logs**, but there are no `test.step` categories for the reporter to render as individual steps.
 - **Q: Where do per-step logs come from?** A: `associateLogsWithSteps` matches test stdout (your `log.info(...)`) to steps by title and order.
 - **Q: Do I still get the assertion?** A: Yes — `expect()` lives inside its own step, so a failure pins to that step.
 
@@ -411,8 +611,8 @@ sequenceDiagram
 
 ```ts
 import { test, expect } from '@playwright/test';
-import { LoginPage } from '@pages/LoginPage.js';
-import { createLogger } from '@utils/logger.js';
+import { LoginPage } from '@pages/LoginPage';
+import { createLogger } from '@utils/logger';
 
 const log = createLogger('login.spec');
 
@@ -434,21 +634,109 @@ test('logs in with valid credentials @p0', async ({ page }) => {
 
 ---
 
-## ESM & Import Extensions
+## Fixtures (Page Object injection)
 
-**Concept:** The project is native ESM (`"type": "module"` + `module: Node16`). Relative and path-alias imports MUST carry an explicit `.js` extension — even though the source is `.ts`.
+**Concept:** `src/fixtures/test-base.ts` extends Playwright's `test` so every Page Object is available as a fixture. Ask for `cartPage` in the test args and it's handed over already constructed against the test's `page`.
 
-**Why:** `@faker-js/faker` v10 is ESM-only, forcing the whole project to ESM. Node ESM resolution does not guess extensions or `index.js`.
+**Why:** Removes `new XPage(page)` boilerplate from every spec and gives each test a fresh, isolated instance.
 
 **Q&A — why use this?**
-- **Q: Why `.js` when the file is `.ts`?** A: TypeScript compiles `BasePage.ts` → `BasePage.js`; at runtime only `.js` exists, so imports target the emitted name.
-- **Q: Do package imports need `.js`?** A: No — only relative/alias file imports (`./BasePage.js`, `@utils/logger.js`). `@playwright/test` and `@faker-js/faker` stay bare.
-- **Q: Barrel file `index.ts` too?** A: Yes — every re-export inside a barrel needs `.js` as well.
+- **Q: Why not just `new LoginPage(page)`?** A: You can — but the fixture centralises construction so a constructor change touches one file, not every spec.
+- **Q: Are pages opened for me?** A: No — fixtures hand over *constructed* (not *opened*) objects. Flows reach pages in different orders, so each spec calls `.open()` itself.
+- **Q: What about credentials?** A: They come from `@config/credentials`, which reads `.env` (see [Environment Configuration](#environment-configuration)).
 
 ```ts
-import { BasePage } from './BasePage.js';          // ✅ relative + .js
-import { LoginPage } from '@pages/LoginPage.js';     // ✅ alias + .js
-import { test } from '@playwright/test';             // ✅ package, no extension
+import { test, expect } from '@fixtures/test-base';
+
+test('add to cart', async ({ inventoryPage, cartPage }) => {
+    await inventoryPage.open();
+    await inventoryPage.addToCart('tta-bike-light');
+    await cartPage.open();
+    expect(await cartPage.rowCount()).toBe(1);
+});
+```
+
+---
+
+## Per-Step Screenshots (visualStep)
+
+**Concept:** `visualStep(page, title, fn)` wraps `test.step`, runs the step, then grabs a screenshot and attaches it as `step-<index>-<slug>` — the exact name the `CustomReporter` maps back to that step. Result: one image per step in the HTML report.
+
+**Why:** Playwright's built-in `screenshot: 'only-on-failure'` captures a single frame at the failure point. `visualStep` gives a visual trail of *every* step, pass or fail — great for demos and debugging.
+
+**Q&A — why use this?**
+- **Q: How does the reporter know which screenshot belongs to which step?** A: By the attachment name `step-N-...`; the steps run sequentially so `N` matches the reporter's own step index.
+- **Q: Does it slow tests down?** A: A little — one screenshot per step. Use it on showcase/e2e specs, not every micro-test.
+- **Q: When is the shot taken?** A: At the *end* of the step, so it shows the resulting state.
+
+```ts
+import { visualStep } from '@utils/visualStep';
+
+await visualStep(page, 'Open the cart', async () => {
+    await cartPage.open();
+    expect(await cartPage.rowCount()).toBe(1);
+});
+```
+
+---
+
+## End-to-End Checkout Flow
+
+**Concept:** `src/tests/e2e-checkout.spec.ts` is the flagship test — log in → inventory → add item → cart → checkout step one → step two → order complete, each as a logged, screenshotted step driven entirely through Page Objects.
+
+**Why:** Proves the whole stack (fixtures + Page Objects + DataGenerator + logger + reporter) works together against the live TTACart app.
+
+**Q&A — why use this?**
+- **Q: Where do the customer details come from?** A: `DataGenerator.checkoutCustomer()` — random first/last name + postal code per run.
+- **Q: How is "order complete" verified?** A: `CheckoutCompletePage.assertOrderComplete()` checks the URL and the "Thank you for your order!" header.
+- **Q: Why `@P0 @Regression` in the describe title?** A: Tags drive filtered runs (`npm run test:p0`) and show up as labels in the Allure report.
+
+```mermaid
+flowchart LR
+    L[Login] --> I[Inventory] --> A[Add item] --> C[Cart]
+    C --> S1[Checkout step 1<br/>guest details]
+    S1 --> S2[Checkout step 2<br/>overview]
+    S2 --> D[Order complete ✅]
+```
+
+```ts
+test('should complete checkout successfully', async ({
+    inventoryPage, cartPage, checkoutStepOnePage, checkoutStepTwoPage, checkoutCompletePage, page,
+}) => {
+    const customer = DataGenerator.checkoutCustomer();
+    await visualStep(page, 'Go to the inventory page', async () => inventoryPage.open());
+    await visualStep(page, 'Add one item to the cart', async () => inventoryPage.addToCart(FIRST_ITEM_ID));
+    await visualStep(page, 'Open the cart', async () => {
+        await cartPage.open();
+        expect(await cartPage.rowCount()).toBe(1);
+    });
+    await visualStep(page, 'Fill guest details (checkout step one)', async () => {
+        await cartPage.checkout();
+        await checkoutStepOnePage.fillGuest(customer);
+        await checkoutStepOnePage.continue();
+    });
+    await visualStep(page, 'Finish the order (checkout step two)', async () => checkoutStepTwoPage.finish());
+    await visualStep(page, 'Order is complete', async () => checkoutCompletePage.assertOrderComplete());
+});
+```
+
+---
+
+## Module System (CommonJS)
+
+**Concept:** The project is plain **CommonJS** — no `"type": "module"`, with tsconfig `module: Node16` / `moduleResolution: Node16`. Relative and path-alias imports are **extensionless**, the way most TS projects read.
+
+**Why:** Faker is pinned to v8 (which has a CommonJS build), so nothing forces the project to ESM. CommonJS keeps imports clean — no `.js` suffix gymnastics.
+
+**Q&A — why this setup?**
+- **Q: Do I add `.js` to imports?** A: No. `import { BasePage } from './BasePage'` — extensionless. (Under CommonJS, Node16 resolution adds the extension for you.)
+- **Q: Why keep `moduleResolution: Node16` instead of classic `node`?** A: Node16 reads package `exports` maps (needed for modern deps) and isn't deprecated in TypeScript 6+; classic `node` is.
+- **Q: What made this CommonJS rather than ESM?** A: Faker version. v8 = dual CJS/ESM → CommonJS works. v9/v10 are ESM-only and would force `"type": "module"` + `.js` extensions everywhere.
+
+```ts
+import { BasePage } from './BasePage';            // ✅ relative, no extension
+import { LoginPage } from '@pages/LoginPage';      // ✅ alias, no extension
+import { test } from '@playwright/test';           // ✅ package
 ```
 
 ---
@@ -462,6 +750,41 @@ import { test } from '@playwright/test';             // ✅ package, no extensio
 | JSON | `test-results/results.json` | auto |
 | Allure | `allure-results/` → `allure-report/` | `npm run test:allure` |
 | List (console) | stdout | auto |
+
+The Custom TTA reporter captures test stdout/stderr from `logger.info(...)` and
+renders it in each expanded test under **Test Logs**. When a spec uses
+`test.step(...)`, the same logs are also distributed into the matching step
+details, so API and UI flows show both the action title and the relevant log
+line in the report.
+
+**Artifacts captured** (configured in `playwright.config.ts`):
+
+| Artifact | Setting | When |
+|----------|---------|------|
+| Screenshot (failure) | `screenshot: 'only-on-failure'` | on any failure |
+| Per-step screenshots | `visualStep()` helper | every step (see [visualStep](#per-step-screenshots-visualstep)) |
+| Video | `video: 'on'` | **always** recorded |
+| Trace | `trace: 'on-first-retry'` | on retry |
+
+Allure is enriched with `environmentInfo` (env, baseURL, Node, OS, CI) and failure `categories`.
+
+---
+
+## Custom TTA Report — Visual Flow
+
+The custom `CustomReporter.ts` produces a branded, real-time HTML report at
+`tta-report/report_<timestamp>.html`. For the end-to-end checkout test it shows
+the **whole journey** — every step with its console log, its own screenshot, and
+the run video.
+
+**Overview** — stats dashboard, environment bar, and the filterable test table:
+
+![TTA report overview](docs/images/tta-report-overview.png)
+
+**End-to-end flow** — expand the test row: each of the 6 steps shows its log
+line and a screenshot, followed by the screenshots gallery and the run video:
+
+![TTA report — e2e checkout flow](docs/images/tta-report-e2e-flow.png)
 
 ---
 
