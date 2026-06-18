@@ -8,6 +8,8 @@ test.describe('Restful Booker booking API', () => {
             Accept: 'application/json',
             'Content-Type': 'application/json',
         };
+
+        // Payload to create a new booking.
         const payload = {
             firstname: 'Meeti',
             lastname: 'Jha',
@@ -18,6 +20,14 @@ test.describe('Restful Booker booking API', () => {
                 checkout: '2019-01-01',
             },
             additionalneeds: 'Breakfast',
+        };
+
+        // Payload to update the existing booking.
+        const updatedPayload = {
+            ...payload,
+            firstname: 'UpdatedMeeti',
+            lastname: 'UpdatedJha',
+            additionalneeds: 'Dinner',
         };
 
         let token = '';
@@ -58,13 +68,13 @@ test.describe('Restful Booker booking API', () => {
                     ...headers,
                     Cookie: `token=${token}`,
                 },
-                data: payload,
+                data: updatedPayload,
             });
             expect(responseData.status()).toBe(200);
 
             const data = await responseData.json();
-            expect(data.firstname).toBe(payload.firstname);
-            expect(data.lastname).toBe(payload.lastname);
+            expect(data.firstname).toBe(updatedPayload.firstname);
+            expect(data.lastname).toBe(updatedPayload.lastname);
             logger.info(`Updated booking id ${bookingId}: ${data.firstname} ${data.lastname}`);
         });
     });

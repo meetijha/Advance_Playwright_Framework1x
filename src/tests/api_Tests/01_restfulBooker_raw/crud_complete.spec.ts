@@ -60,6 +60,13 @@ test.describe.serial('Restful Booker CRUD API', () => {
         additionalneeds: 'Breakfast',
     };
 
+    const updatedPayload: BookingPayload = {
+    ...payload,
+    firstname: 'UpdatedMeeti',
+    lastname: 'UpdatedJha',
+    additionalneeds: 'Lunch',
+    };
+
     // Step 1: Create a token for authentication. This token will be used in the subsequent requests to update the booking.
     test('TC#1 @p0 - Create token', async ({ request }) => {
         await test.step('Create token', async () => {
@@ -87,7 +94,7 @@ test.describe.serial('Restful Booker CRUD API', () => {
         });
     });
 
-    // Step 2: Create a booking using the created token.
+    // Step 2: Create a booking.
     test('TC#2 @p0 - Create booking', async ({ request }) => {
         await test.step('Create booking', async () => {
             const responseData = await request.post(`${baseUrl}/booking`, {
@@ -106,8 +113,24 @@ test.describe.serial('Restful Booker CRUD API', () => {
         });
     });
 
-    // Step 3: Update the booking using the created token and booking ID.
-    test('TC#3 @p0 - Update booking', async ({ request }) => {
+    // Step 3: Get all booking ids and verify the created booking id is present in the list of all booking ids.
+    test('TC#3 @p0 - Get all booking ids and verify created booking id is present', async ({ request }) => {
+        await test.step('Get all booking ids', async () => {
+            const responseData = await request.get(`${baseUrl}/booking`, {
+                headers,
+            });
+
+            expect(responseData.status()).toBe(200);
+            const data = await responseData.json() as { bookingid: number }[];
+            const bookingIds = data.map((booking) => booking.bookingid);
+
+            expect(bookingIds).toContain(bookingFlowState.bookingId);
+            logger.info(`Verified created booking id ${bookingFlowState.bookingId} is present in the list of all booking ids`);
+        });
+    });
+
+    // Step 4: Update the booking using the created token and booking ID.
+    test('TC#4 @p0 - Update booking', async ({ request }) => {
         await test.step('Update booking', async () => {
             const token = bookingFlowState.token;
             const bookingId = bookingFlowState.bookingId;
@@ -117,21 +140,69 @@ test.describe.serial('Restful Booker CRUD API', () => {
             }
 
             // ...headers → keeps existing headers
-            // Cookie → adds authentication
+            // Cookie → adds authentication example: Cookie: `token=${token}` is used to authenticate the request with the token obtained from the previous step.
             const responseData = await request.put(`${baseUrl}/booking/${bookingId}`, {               
                 headers: {
                     ...headers, 
                     Cookie: `token=${token}`, 
                 }, 
-                data: payload,
+                data: updatedPayload,
             });
 
             expect(responseData.status()).toBe(200);
             const data = await responseData.json() as BookingPayload;
-            expect(data.firstname).toBe(payload.firstname);
-            expect(data.lastname).toBe(payload.lastname);
+            expect(data.firstname).toBe(updatedPayload.firstname);
+            expect(data.lastname).toBe(updatedPayload.lastname);
+            expect(data.additionalneeds).toBe(updatedPayload.additionalneeds);
+
+            expect(data.firstname).not.toBe(payload.firstname);
+            expect(data.lastname).not.toBe(payload.lastname);
+            expect(data.additionalneeds).not.toBe(payload.additionalneeds);
 
             logger.info(`Updated booking id ${bookingId}: ${data.firstname} ${data.lastname}`);
         });
     });
+
+    // Step 5: Delete the booking using the created token and booking ID.
+    test('TC#5 @p0 - Delete booking', async ({ request }) => {
+        await test.step('Delete booking', async () => {
+            const token = bookingFlowState.token;
+            const bookingId = bookingFlowState.bookingId;
+
+            if (!token || !bookingId) {
+                throw new Error('Create token and create booking tests must pass before delete booking.');
+            }
+
+            const responseData = await request.delete(`${baseUrl}/booking/${bookingId}`, {
+                headers: {
+                    ...headers,
+                    Cookie: `token=${token}`,
+                },
+            });
+
+            expect(responseData.status()).toBe(201);
+            logger.info(`Deleted booking id ${bookingId}`);
+        });
+
+    });
+
+    // Step 6: Verify the booking has been deleted by attempting to fetch it and expecting a 404 response.
+    test('TC#6 @p0 - Verify booking deletion', async ({ request }) => {
+        await test.step('Verify booking deletion', async () => {
+            const bookingId = bookingFlowState.bookingId;
+
+            if (!bookingId) {
+                throw new Error('Create booking test must pass before verifying deletion.');
+            }
+
+            const responseData = await request.get(`${baseUrl}/booking/${bookingId}`, {
+                headers,
+            });
+
+            expect(responseData.status()).toBe(404);
+            logger.info(`Verified deletion of booking id ${bookingId} with 404 response`);  
+        });   
+
+    });
+    
 });
