@@ -17,9 +17,9 @@ import { createLogger, type Logger } from '@utils/logger.js';
 
 
 export abstract class BasePage {
-    protected readonly page: Page;
-    protected readonly el: UtilElementLocator;
-    protected readonly log: Logger;
+    protected readonly page: Page;        // direct access to the Playwright Page for advanced use cases
+    protected readonly el: UtilElementLocator;      // a wrapper for common element actions, with built-in logging and error handling
+    protected readonly log: Logger;       // a per-page logger with the scope set to the subclass name
     protected constructor(page: Page, scope: string) {
         this.page = page;
         this.el = new UtilElementLocator(page, scope);
@@ -28,7 +28,7 @@ export abstract class BasePage {
 
     protected async goto(relativePath: string): Promise<void> {
         await this.page.goto(relativePath);
-        await this.page.waitForLoadState('domcontentloaded');
+        await this.page.waitForLoadState('domcontentloaded'); // ensure the page is ready before any further actions
     }
 
 }

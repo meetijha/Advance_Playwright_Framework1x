@@ -20,6 +20,7 @@ test('TC#1 @p0 - POST : Verify that create booking is working fine.', async ({ r
         'Content-Type': 'application/json',
     };
 
+    // Make API request POST
     const responseData = await request.post(`${baseUrl}/booking`, {
         headers,
         data: payload,
@@ -32,8 +33,6 @@ test('TC#1 @p0 - POST : Verify that create booking is working fine.', async ({ r
     expect(data.booking.lastname).toBe(payload.lastname);
     logger.info(`Created booking id: ${data.bookingid}`);
 });
-
-
 
 
 
