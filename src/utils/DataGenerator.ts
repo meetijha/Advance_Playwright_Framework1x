@@ -37,7 +37,7 @@ export class DataGenerator {
 
     /** Random username, e.g. "Otilia35". */
     static username(): string {
-        return faker.internet.username();
+        return faker.internet.userName();
     }
 
     /**
@@ -107,3 +107,11 @@ export class DataGenerator {
 }
 
 export default DataGenerator;
+
+// As we have already exported DataGenerator class , above line is redundant.
+
+// for export class DataGenerator {.....
+// importing way -> import { DataGenerator } from '@utils/DataGenerator';
+
+// for export default DataGenerator;
+// importing way -> import DataGenerator from '@utils/DataGenerator';

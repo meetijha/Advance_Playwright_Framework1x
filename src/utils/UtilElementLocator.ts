@@ -21,12 +21,19 @@ export const DEFAULT_ACTION_TIMEOUT_MS = 15_000;
  *   - `page.getByTestId('username')` (a Locator object).
  */
 
+// Flex is a type alias that can be either a string (representing a CSS selector) or a Locator object.
+//  This allows the utility functions to accept both types of inputs for flexibility in locating elements on the page.
+// Example usage:
+//   const locator1: Flex = '[data-test="username"]'; // CSS selector string
+//   const locator2: Flex = page.getByTestId('username'); // Locator object
 export type Flex = string | Locator;
 
 export class UtilElementLocator {
     private readonly page: Page;
     private readonly log: Logger;
 
+    // Constructor initializes the UtilElementLocator with a Playwright Page and an optional scope for logging.
+    // 'UtilElementLocator' is the default scope if none is provided.
     constructor(page: Page, scope: string = 'UtilElementLocator') {
         this.page = page;
         this.log = createLogger(scope);

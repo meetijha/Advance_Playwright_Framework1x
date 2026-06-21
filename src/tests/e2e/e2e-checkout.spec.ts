@@ -21,12 +21,14 @@ const FIRST_ITEM_ID = 'test-allthethings-tshirt-red';
 
 test.describe('@P0 @Regression E2E @Checkout Checkout Feature', () => {
     // Step 1 — every test in this suite starts already logged in.
-    test.beforeEach(async ({ loginPage }) => {
+    // This is test hook that runs before each test in this suite. 
+    // It logs in as a standard user using the credentials defined in the configuration.
+    test.beforeEach(async ({ loginPage }) => { 
         log.info(`Step 1: logging in as ${credentials.standardUser}`);
         await loginPage.open();
         await loginPage.loginAs(credentials.standardUser, credentials.password);
     });
-
+    
     test('should complete checkout successfully', async ({
         page,
         inventoryPage,

@@ -18,6 +18,9 @@ export class CartPage extends BasePage {
     private readonly continueShoppingLink: Locator;
     private readonly checkoutButton: Locator;
 
+    // readonly is for properties , just like const is for variables.
+    //  It means that the property can only be assigned once, either at the point of declaration or in the constructor of the class. After that, its value cannot be changed.
+   
     constructor(page: Page) {
         super(page, 'CartPage');
         this.title = page.locator('[data-test="title"]');
